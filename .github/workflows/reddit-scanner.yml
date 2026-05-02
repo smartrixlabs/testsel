@@ -2,10 +2,12 @@ name: Reddit Feed Scanner
 
 on:
   schedule:
-    # Runs every 20 minutes to stay within GitHub's 2,000 minute free limit
-    # (3 runs/hr * 24 hrs * 30 days = 2,160 runs. If each run is < 50s, this fits!)
-    - cron: '*/20 * * * *'
+    # Runs every 10 minutes to stay within GitHub's 2,000 minute free limit
+    # (6 runs/hr * 24 hrs * 30 days = 4,320 runs. Each run is ~20s = 1,440 mins. Fits!)
+    - cron: '*/10 * * * *'
   workflow_dispatch:  # Allow manual trigger from GitHub UI
+  repository_dispatch:
+    types: [precise_trigger]
 
 jobs:
   scan:
