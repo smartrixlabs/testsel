@@ -434,7 +434,7 @@ def scan_subreddit_feeds(subreddits: list, keywords: list, age_limit_hours: int 
 
 # ── Process & Store Posts ─────────────────────────────────────────────────────
 
-def process_and_store(db, raw_posts: list, project_id: str, all_keywords: list, existing_ids: set, store_limit: int = 20) -> int:
+def process_and_store(db, raw_posts: list, project_id: str, user_id: str, all_keywords: list, existing_ids: set, store_limit: int = 20) -> int:
     """Deduplicate, score, sort by preScore descending, and store top-N to Firestore.
     store_limit: max new posts to write per scan run — derived from the project owner's plan.
     Sorting ensures the highest-intent leads are stored when the limit is hit.
@@ -491,6 +491,7 @@ def process_and_store(db, raw_posts: list, project_id: str, all_keywords: list, 
 
         doc = {
             "projectId": project_id,
+            "userId": user_id,
             "title": raw["title"],
             "body": raw["body"][:2000],
             "author": raw["author"],
@@ -526,7 +527,7 @@ def update_project_stats(db, project_id: str, newly_stored: int = 0):
     update_data = {"lastScannedAt": firestore.SERVER_TIMESTAMP}
     if newly_stored > 0:
         update_data["totalPosts"] = firestore.Increment(newly_stored)
-    db.collection("projects").document(project_id).update(update_data)
+    db.collection("campaigns").document(project_id).update(update_data)
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
@@ -567,18 +568,19 @@ def main():
     # 2. Load plan limits once
     plan_limits = load_plan_limits(db)
     
-    # 3. Process active projects
-    active_projects = list(db.collection("projects").where("status", "==", "active").stream())
-    log.info(f"Found {len(active_projects)} active project(s)")
+    # 3. Process active campaigns
+    active_campaigns = list(db.collection("campaigns").where("status", "==", "active").stream())
+    log.info(f"Found {len(active_campaigns)} active campaign(s)")
 
-    for proj_doc in active_projects:
-        proj = proj_doc.to_dict()
-        project_id = proj_doc.id
-        name = proj.get("name", project_id)
-        keywords = proj.get("keywords", [])
-        subreddits = proj.get("subreddits", [])
+    for camp_doc in active_campaigns:
+        camp = camp_doc.to_dict()
+        project_id = camp_doc.id
+        user_id = camp.get("userId", "")
+        name = camp.get("name", project_id)
+        keywords = camp.get("keywords", [])
+        subreddits = camp.get("subreddits", [])
 
-        log.info(f"\n── Project: {name} ({project_id})")
+        log.info(f"\n── Campaign: {name} ({project_id})")
         
         if not keywords and not subreddits:
             log.info("   No keywords or subreddits — skipping")
@@ -596,8 +598,8 @@ def main():
 
         log.info(f"   Raw posts fetched: {len(all_raw)}")
 
-        store_limit = get_project_store_limit(db, proj, plan_limits)
-        stored = process_and_store(db, all_raw, project_id, keywords, existing_ids, store_limit=store_limit)
+        store_limit = get_project_store_limit(db, camp, plan_limits)
+        stored = process_and_store(db, all_raw, project_id, user_id, keywords, existing_ids, store_limit=store_limit)
         
         update_project_stats(db, project_id, stored)
 
